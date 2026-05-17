@@ -1,0 +1,9 @@
+{
+  "name": "pilates-whatsapp-integration",
+  "version": "1.0.0",
+  "description": "WhatsApp Business <-> HubSpot Integration für Pilates Company Lübeck",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "axios": "^1.6.0"
+  }
+}
