@@ -4,30 +4,15 @@
 [functions]
   node_bundler = "esbuild"
 
-[[redirects]]
-  from = "/webhook"
-  to = "/.netlify/functions/whatsapp-webhook"
-  status = 200
-
-[[redirects]]
-  from = "/webhook/*"
-  to = "/.netlify/functions/whatsapp-webhook"
-  status = 200
-[build]
-  functions = "netlify/functions"
-
-[functions]
-  node_bundler = "esbuild"
-
-[[redirects]]
-  from = "/webhook"
-  to = "/.netlify/functions/whatsapp-webhook"
-  status = 200
-
-[[redirects]]
-  from = "/webhook/*"
-  to = "/.netlify/functions/whatsapp-webhook"
-  status = 200
-
-[build.environment]
+[context.production.environment]
   SECRETS_SCAN_ENABLED = "false"
+
+[[redirects]]
+  from = "/webhook"
+  to = "/.netlify/functions/whatsapp-webhook"
+  status = 200
+
+[[redirects]]
+  from = "/webhook/*"
+  to = "/.netlify/functions/whatsapp-webhook"
+  status = 200
