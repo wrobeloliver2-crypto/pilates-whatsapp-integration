@@ -12,18 +12,32 @@ exports.handler = async (event) => {
   try {
     const { phone } = JSON.parse(event.body);
     const digits = phone.replace(/\D/g, "");
-    const local = digits.startsWith("49") ? digits.slice(2) : digits;
+    
+    // Normalisieren: immer auf lokale 10-stellige Nummer bringen
+    let local;
+    if (digits.startsWith("49") && digits.length > 10) {
+      local = digits.slice(2); // 4917661280122 -> 17661280122
+    } else if (digits.startsWith("0")) {
+      local = digits.slice(1); // 017661280122 -> 17661280122
+    } else {
+      local = digits; // 17661280122
+    }
+    
+    // Max 5 filterGroups, je 2 filter (phone + mobilephone) = 5 Varianten
     const variants = [
-      "+" + digits, digits,
-      "+49 " + local.slice(0,3) + " " + local.slice(3),
-      "+49 " + local.slice(0,4) + " " + local.slice(4),
-      "+49 " + local.slice(0,3) + " " + local.slice(3,7) + " " + local.slice(7),
-      "+49 " + local, "0" + local,
+      "0" + local,           // 017661280122
+      "+49" + local,         // +4917661280122
+      "+49 " + local.slice(0,3) + " " + local.slice(3,7) + " " + local.slice(7), // +49 176 6128 0122
+      "+49 " + local.slice(0,4) + " " + local.slice(4), // +49 1766 1280122
+      "49" + local,          // 4917661280122
     ];
-    const filterGroups = variants.flatMap(v => [
-      { filters: [{ propertyName: "phone", operator: "EQ", value: v }] },
-      { filters: [{ propertyName: "mobilephone", operator: "EQ", value: v }] },
-    ]).slice(0, 10);
+    
+    const filterGroups = variants.map(v => ({
+      filters: [
+        { propertyName: "phone", operator: "EQ", value: v },
+        { propertyName: "mobilephone", operator: "EQ", value: v }
+      ]
+    }));
 
     const searchRes = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
       method: "POST",
@@ -32,9 +46,8 @@ exports.handler = async (event) => {
     });
     const searchData = await searchRes.json();
     
-    // DEBUG: HubSpot Antwort zurückgeben
     if (!searchData.results || searchData.results.length === 0) {
-      return { statusCode: 200, headers, body: JSON.stringify({ found: false, debug: { status: searchRes.status, hubspotResponse: searchData, tokenPrefix: HUBSPOT_TOKEN ? HUBSPOT_TOKEN.substring(0,10) + "..." : "MISSING", variantsTried: variants } }) };
+      return { statusCode: 200, headers, body: JSON.stringify({ found: false }) };
     }
     const contact = searchData.results[0];
     const props = contact.properties;
