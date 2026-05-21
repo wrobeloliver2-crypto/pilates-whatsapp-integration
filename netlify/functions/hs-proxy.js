@@ -24,14 +24,17 @@ exports.handler = async (event) => {
       { filters: [{ propertyName: "phone", operator: "EQ", value: v }] },
       { filters: [{ propertyName: "mobilephone", operator: "EQ", value: v }] },
     ]).slice(0, 10);
+
     const searchRes = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
       method: "POST",
       headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({ filterGroups, properties: ["firstname","lastname","email","phone","mobilephone","lifecyclestage","hubspot_owner_id","notes_last_updated"] }),
     });
     const searchData = await searchRes.json();
+    
+    // DEBUG: HubSpot Antwort zurückgeben
     if (!searchData.results || searchData.results.length === 0) {
-      return { statusCode: 200, headers, body: JSON.stringify({ found: false }) };
+      return { statusCode: 200, headers, body: JSON.stringify({ found: false, debug: { status: searchRes.status, hubspotResponse: searchData, tokenPrefix: HUBSPOT_TOKEN ? HUBSPOT_TOKEN.substring(0,10) + "..." : "MISSING", variantsTried: variants } }) };
     }
     const contact = searchData.results[0];
     const props = contact.properties;
