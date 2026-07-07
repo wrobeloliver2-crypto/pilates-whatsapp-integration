@@ -23,6 +23,12 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 //   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
 //   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
 // Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
+const SIDEBAR_VERSION = '1.1.2';
+
+// Letzte Verlaufs-Diagnose — wird bei leerem Ergebnis direkt im Panel angezeigt,
+// damit die Fehlersuche ohne Entwicklerkonsole möglich ist.
+let letzteVerlaufDiagnose = '';
+
 function textAusZeile(row) {
   // Stufe 1: klassischer Text-Span
   let el = row.querySelector('span.selectable-text, div.selectable-text');
@@ -42,6 +48,7 @@ function textAusZeile(row) {
 function leseVerlauf(maxN = 20) {
   const main = document.querySelector('#main');
   if (!main) {
+    letzteVerlaufDiagnose = '#main nicht gefunden (Chat-Container fehlt)';
     console.debug('[PC-Sidebar] Verlauf: #main nicht gefunden');
     return [];
   }
@@ -67,14 +74,16 @@ function leseVerlauf(maxN = 20) {
     stufenZaehler[stufe] = (stufenZaehler[stufe] || 0) + 1;
     if (text) msgs.push({ von, zeit, text: text.slice(0, 600) });
   });
-  console.debug(`[PC-Sidebar] Verlauf: ${rows.length} Zeilen (${zeilenQuelle}), ${msgs.length} Texte, Stufen:`, stufenZaehler);
+  const stufenText = Object.entries(stufenZaehler).map(([k, v]) => `${k}=${v}`).join(', ')
+  letzteVerlaufDiagnose = `${rows.length} Zeilen (${zeilenQuelle}), ${msgs.length} Texte [${stufenText}]`;
+  console.debug(`[PC-Sidebar] Verlauf: ${letzteVerlaufDiagnose}`);
   return msgs.slice(-maxN);
 }
 
 async function sendeVerlauf(nummerNorm, chatName, statusEl) {
   const nachrichten = leseVerlauf();
   if (!nachrichten.length) {
-    statusEl.textContent = 'Keine Textnachrichten gefunden';
+    statusEl.textContent = `Keine Texte gefunden — v${SIDEBAR_VERSION}: ${letzteVerlaufDiagnose}`;
     return;
   }
   statusEl.textContent = '⏳ sende …';
