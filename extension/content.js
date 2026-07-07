@@ -8,8 +8,54 @@
 // Kontakt unter seiner Nummer (nicht gespeichert) angezeigt wird.
 
 const API = 'https://pilatesleaddashboard.netlify.app/.netlify/functions/sheets-api';
+const TRANSCRIPT_API = 'https://pilatesleaddashboard.netlify.app/.netlify/functions/wa-transcript';
 const DASHBOARD_URL = 'https://pilatesleaddashboard.netlify.app';
 const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
+
+// ---- Verlauf des aktiven Chats auslesen ----
+// WhatsApp Web: jede Nachrichtenzeile hat data-id "true_…" (von uns) bzw.
+// "false_…" (vom Kontakt); der Container mit data-pre-plain-text trägt
+// "[HH:mm, TT.MM.JJJJ] Name: " — daraus lesen wir den Zeitstempel.
+// Nur Textnachrichten; Bilder/Sprachnachrichten ohne Text werden übersprungen.
+// HINWEIS: DOM-abhängig — wenn WhatsApp die Struktur ändert, hier nachziehen.
+function leseVerlauf(maxN = 20) {
+  const main = document.querySelector('#main');
+  if (!main) return [];
+  const rows = main.querySelectorAll('[data-id^="true_"], [data-id^="false_"]');
+  const msgs = [];
+  rows.forEach(row => {
+    const id = row.getAttribute('data-id') || '';
+    if (!id.includes('@c.us')) return; // Gruppen/Status ignorieren
+    const von = id.startsWith('true_') ? 'Studio' : 'Kunde';
+    const pre = row.querySelector('[data-pre-plain-text]');
+    const zeit = pre ? ((pre.getAttribute('data-pre-plain-text') || '').match(/\[(.*?)\]/) || [, ''])[1] : '';
+    const textEl = row.querySelector('span.selectable-text, div.selectable-text');
+    const text = textEl ? (textEl.innerText || '').trim() : '';
+    if (text) msgs.push({ von, zeit, text: text.slice(0, 600) });
+  });
+  return msgs.slice(-maxN);
+}
+
+async function sendeVerlauf(nummerNorm, chatName, statusEl) {
+  const nachrichten = leseVerlauf();
+  if (!nachrichten.length) {
+    statusEl.textContent = 'Keine Textnachrichten gefunden';
+    return;
+  }
+  statusEl.textContent = '⏳ sende …';
+  try {
+    const res = await fetch(TRANSCRIPT_API, {
+      method: 'POST',
+      body: JSON.stringify({ telefon: nummerNorm, chatName, nachrichten }),
+    });
+    const data = await res.json();
+    statusEl.textContent = data.ok
+      ? `✓ ${data.anzahl} Nachrichten übermittelt — KI-Vorschlag nutzt sie jetzt`
+      : `⚠ ${data.reason || 'Fehler'}`;
+  } catch {
+    statusEl.textContent = '⚠ Dashboard nicht erreichbar';
+  }
+}
 
 let leadsCache = { at: 0, leads: [] };
 let aktuelleNummer = null;
@@ -129,9 +175,15 @@ function renderLead(lead) {
     ${zeile('Eingang', lead.eingangsdatum)}
     ${lead.nachricht ? `<div class="pc-nachricht">„${esc(lead.nachricht)}"</div>` : ''}
     ${lead.notizen ? `<div class="pc-notizen">${esc(lead.notizen)}</div>` : ''}
+    <button class="pc-verlauf-btn" type="button">⤴ Verlauf an KI senden</button>
+    <div class="pc-verlauf-status"></div>
     <a class="pc-link" href="${DASHBOARD_URL}" target="_blank" rel="noopener">Im Dashboard öffnen ↗</a>
   `;
   renderPanel(html, lead.name || '(kein Name)');
+  const el = document.getElementById('pc-lead-panel');
+  const btn = el.querySelector('.pc-verlauf-btn');
+  const statusEl = el.querySelector('.pc-verlauf-status');
+  if (btn) btn.addEventListener('click', () => sendeVerlauf(aktuelleNummer, lead.name || '', statusEl));
 }
 
 function renderKeinLead(nummerNorm) {

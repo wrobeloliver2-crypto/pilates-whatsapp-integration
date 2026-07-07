@@ -132,3 +132,27 @@
   background: #b0796e;
   color: #fff;
 }
+
+#pc-lead-panel .pc-verlauf-btn {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 0;
+  border: 1px solid #d9a49a;
+  border-radius: 100px;
+  background: #fff;
+  color: #b0796e;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+#pc-lead-panel .pc-verlauf-btn:hover {
+  background: #f5ede9;
+}
+#pc-lead-panel .pc-verlauf-status {
+  font-size: 11px;
+  color: #746e67;
+  text-align: center;
+  min-height: 14px;
+  line-height: 1.4;
+}

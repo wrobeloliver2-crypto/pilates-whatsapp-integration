@@ -25,3 +25,12 @@ passende Karte aus dem Pilates Lead-Dashboard (rechts oben eingeblendet).
 - Leads werden max. 1×/Minute vom Dashboard geladen (Cache)
 - Kein Lead zur Nummer → Panel zeigt „Kein Lead zu dieser Nummer"
 - Panel ist per ▾/▸ einklappbar
+
+## Verlauf an KI senden (ab v1.1.0)
+- Button „⤴ Verlauf an KI senden" im Lead-Panel liest die letzten ~20
+  Textnachrichten des offenen Chats (nur Text, keine Bilder/Sprachnachrichten)
+  und übermittelt sie ans Dashboard (`wa-transcript`).
+- Der ✨ KI-Vorschlag im Dashboard nutzt den Verlauf automatisch beim
+  nächsten Klick (Abgleich per normalisierter Telefonnummer).
+- Erneutes Senden überschreibt den alten Verlauf zur Nummer (neuester gewinnt).
+- Ablage: Google Sheet, Tab „WA-Verlaeufe" (wird automatisch angelegt).
