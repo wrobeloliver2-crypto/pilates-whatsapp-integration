@@ -23,7 +23,7 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 //   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
 //   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
 // Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
-const SIDEBAR_VERSION = '1.1.2';
+const SIDEBAR_VERSION = '1.1.3';
 
 // Letzte Verlaufs-Diagnose — wird bei leerem Ergebnis direkt im Panel angezeigt,
 // damit die Fehlersuche ohne Entwicklerkonsole möglich ist.
@@ -52,22 +52,39 @@ function leseVerlauf(maxN = 20) {
     console.debug('[PC-Sidebar] Verlauf: #main nicht gefunden');
     return [];
   }
-  // Zeilen-Erkennung Stufe 1: data-id-Prefix (liefert auch die Richtung)
-  let rows = Array.from(main.querySelectorAll('[data-id^="true_"], [data-id^="false_"]'))
-    .filter(r => (r.getAttribute('data-id') || '').includes('@c.us'));
-  let zeilenQuelle = 'data-id';
-  // Stufe 2: klassische Richtungs-Klassen (falls data-id-Struktur wegfällt)
+  // Zeilen-Erkennung Stufe 1: data-id ENTHÄLT @c.us — derselbe Selektor, mit dem
+  // auch die (nachweislich funktionierende) Nummern-Erkennung arbeitet.
+  // Stand 07/2026: die IDs beginnen NICHT mehr mit "true_/false_" (Präfix-Selektor
+  // fand 0 Zeilen), true/false steckt aber weiterhin IN der ID → includes().
+  let rows = Array.from(main.querySelectorAll('[data-id*="@c.us"]'));
+  let zeilenQuelle = 'data-id-contains';
+  // Stufe 2: Richtungs-Klassen OHNE Tag-Einschränkung (div.… griff nicht mehr)
   if (!rows.length) {
-    rows = Array.from(main.querySelectorAll('div.message-in, div.message-out'));
+    rows = Array.from(main.querySelectorAll('.message-in, .message-out'));
     zeilenQuelle = 'message-klassen';
+  }
+  // Stufe 3: generische Nachrichten-Zeilen der Chatliste
+  if (!rows.length) {
+    rows = Array.from(main.querySelectorAll('[role="row"]'));
+    zeilenQuelle = 'role-row';
+  }
+  // Verschachtelte Treffer aussortieren (Container, die selbst wieder einen
+  // Treffer enthalten, würden Texte doppelt erfassen) → nur innerste behalten.
+  if (rows.length > 1) {
+    rows = rows.filter(r => !rows.some(other => other !== r && r.contains(other)));
   }
   const msgs = [];
   const stufenZaehler = {};
   rows.forEach(row => {
     const id = row.getAttribute('data-id') || '';
-    const von = id
-      ? (id.startsWith('true_') ? 'Studio' : 'Kunde')
-      : (row.classList.contains('message-out') ? 'Studio' : 'Kunde');
+    // Richtung: true/false irgendwo in der ID; sonst über Richtungs-Klassen
+    // am Element selbst oder in Kind-/Elternknoten; sonst unbekannt.
+    let von;
+    if (id.includes('true_')) von = 'Studio';
+    else if (id.includes('false_')) von = 'Kunde';
+    else if (row.classList.contains('message-out') || row.closest('.message-out') || row.querySelector('.message-out')) von = 'Studio';
+    else if (row.classList.contains('message-in') || row.closest('.message-in') || row.querySelector('.message-in')) von = 'Kunde';
+    else von = 'Unbekannt';
     const pre = row.querySelector('[data-pre-plain-text]');
     const zeit = pre ? ((pre.getAttribute('data-pre-plain-text') || '').match(/\[(.*?)\]/) || [, ''])[1] : '';
     const { text, stufe } = textAusZeile(row);
