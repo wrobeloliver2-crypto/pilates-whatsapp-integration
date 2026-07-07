@@ -1,0 +1,177 @@
+// Pilates Company – Lead-Sidebar für WhatsApp Web
+// Erkennt die Telefonnummer des aktiven 1:1-Chats und zeigt rechts oben die
+// passende Karte aus dem Lead-Dashboard (Google Sheet via sheets-api).
+//
+// Nummern-Erkennung: WhatsApp Web trägt an jeder Nachrichtenzeile ein
+// data-id wie "false_4917661280122@c.us_ABC…" — daraus lesen wir die JID.
+// Gruppen (@g.us) werden ignoriert. Fallback: Header-Text, falls der
+// Kontakt unter seiner Nummer (nicht gespeichert) angezeigt wird.
+
+const API = 'https://pilatesleaddashboard.netlify.app/.netlify/functions/sheets-api';
+const DASHBOARD_URL = 'https://pilatesleaddashboard.netlify.app';
+const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
+
+let leadsCache = { at: 0, leads: [] };
+let aktuelleNummer = null;
+let panelEingeklappt = false;
+
+// ---- Telefon-Normalisierung (identisch zur Dashboard-Logik in evs-intake) ----
+function normalisiereTelefon(t = '') {
+  let d = String(t).replace(/[^\d]/g, '');
+  if (d.startsWith('0049')) d = d.slice(4);
+  else if (d.startsWith('49') && d.length > 10) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+
+// ---- Nummer des aktiven Chats ermitteln ----
+function leseChatNummer() {
+  const main = document.querySelector('#main');
+  if (!main) return null;
+
+  // 1) data-id an Nachrichtenzeilen: "…_<nummer>@c.us_…"
+  const mitId = main.querySelector('[data-id*="@c.us"]');
+  if (mitId) {
+    const m = (mitId.getAttribute('data-id') || '').match(/(\d{6,})@c\.us/);
+    if (m) return m[1];
+  }
+  // Gruppe? Dann bewusst nichts anzeigen.
+  if (main.querySelector('[data-id*="@g.us"]')) return null;
+
+  // 2) Fallback: Header zeigt bei ungespeicherten Kontakten die Nummer
+  const header = main.querySelector('header');
+  if (header) {
+    const m = (header.textContent || '').match(/\+?[\d\s\-()]{8,}/);
+    if (m && normalisiereTelefon(m[0]).length >= 6) return normalisiereTelefon(m[0]);
+  }
+  return null;
+}
+
+// ---- Leads vom Dashboard laden (mit kleinem Cache) ----
+async function holeLeads() {
+  if (Date.now() - leadsCache.at < CACHE_MS && leadsCache.leads.length) return leadsCache.leads;
+  const res = await fetch(API, { method: 'POST', body: JSON.stringify({ action: 'getAll' }) });
+  const data = await res.json();
+  if (Array.isArray(data)) leadsCache = { at: Date.now(), leads: data };
+  return leadsCache.leads;
+}
+
+function findeLead(leads, nummerNorm) {
+  return leads.find(l => normalisiereTelefon(l.telefon || '') === nummerNorm) || null;
+}
+
+// ---- Alter formatieren: "2 T 5 Std" / "5 Std" / "12 Min" ----
+function alterText(ts) {
+  if (!ts) return null;
+  const iso = ts.trim().slice(0, 16).replace(' ', 'T');
+  const d = new Date(iso.length === 10 ? iso + 'T00:00' : iso);
+  if (isNaN(d)) return null;
+  const diff = Date.now() - d.getTime();
+  if (diff < 0) return null;
+  const stdGesamt = Math.floor(diff / 36e5);
+  const tage = Math.floor(stdGesamt / 24);
+  if (tage > 0) return `${tage} T ${stdGesamt % 24} Std`;
+  if (stdGesamt > 0) return `${stdGesamt} Std`;
+  return `${Math.max(1, Math.floor(diff / 6e4))} Min`;
+}
+
+function esc(s = '') {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+// ---- Panel ----
+function panelElement() {
+  let el = document.getElementById('pc-lead-panel');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'pc-lead-panel';
+  document.body.appendChild(el);
+  return el;
+}
+
+function renderPanel(inhaltHtml, titel) {
+  const el = panelElement();
+  el.innerHTML = `
+    <div class="pc-kopf">
+      <span class="pc-titel">${esc(titel)}</span>
+      <button class="pc-toggle" title="Ein-/ausklappen">${panelEingeklappt ? '▸' : '▾'}</button>
+    </div>
+    <div class="pc-inhalt" style="${panelEingeklappt ? 'display:none' : ''}">${inhaltHtml}</div>
+  `;
+  el.querySelector('.pc-toggle').addEventListener('click', () => {
+    panelEingeklappt = !panelEingeklappt;
+    const inhalt = el.querySelector('.pc-inhalt');
+    inhalt.style.display = panelEingeklappt ? 'none' : '';
+    el.querySelector('.pc-toggle').textContent = panelEingeklappt ? '▸' : '▾';
+  });
+}
+
+function zeile(label, wert, klasse = '') {
+  if (!wert) return '';
+  return `<div class="pc-zeile ${klasse}"><span class="pc-label">${esc(label)}</span><span class="pc-wert">${esc(wert)}</span></div>`;
+}
+
+function renderLead(lead) {
+  const wa = alterText(lead.waGesendetAm);
+  const wv = lead.wiedervorlage ? lead.wiedervorlage.slice(0, 16).replace('T', ' ') : '';
+  const html = `
+    ${lead.quelle ? `<span class="pc-badge pc-quelle">${esc(lead.quelle)}</span>` : ''}
+    ${lead.status ? `<span class="pc-badge pc-status">${esc(lead.status)}</span>` : ''}
+    ${lead.prioritaet === 'Sofort' ? `<span class="pc-badge pc-sofort">SOFORT</span>` : ''}
+    ${wa ? `<span class="pc-badge pc-wa">✓ WhatsApp · vor ${esc(wa)}</span>` : ''}
+    ${zeile('Bearbeiter', lead.bearbeiter !== 'Unzugewiesen' ? lead.bearbeiter : '')}
+    ${zeile('Interesse', lead.interesse)}
+    ${zeile('Wunschtag', lead.wunschtag)}
+    ${zeile('Wiedervorlage', wv && lead.wiedervorlageGrund ? `${wv} — ${lead.wiedervorlageGrund}` : wv)}
+    ${zeile('E-Mail', lead.email)}
+    ${zeile('Eingang', lead.eingangsdatum)}
+    ${lead.nachricht ? `<div class="pc-nachricht">„${esc(lead.nachricht)}"</div>` : ''}
+    ${lead.notizen ? `<div class="pc-notizen">${esc(lead.notizen)}</div>` : ''}
+    <a class="pc-link" href="${DASHBOARD_URL}" target="_blank" rel="noopener">Im Dashboard öffnen ↗</a>
+  `;
+  renderPanel(html, lead.name || '(kein Name)');
+}
+
+function renderKeinLead(nummerNorm) {
+  renderPanel(
+    `<div class="pc-leer">Kein Lead zu dieser Nummer<br><span class="pc-nummer">0${esc(nummerNorm)}</span></div>
+     <a class="pc-link" href="${DASHBOARD_URL}" target="_blank" rel="noopener">Dashboard öffnen ↗</a>`,
+    'Lead-Dashboard'
+  );
+}
+
+function entfernePanel() {
+  const el = document.getElementById('pc-lead-panel');
+  if (el) el.remove();
+  aktuelleNummer = null;
+}
+
+// ---- Hauptschleife: auf Chat-Wechsel reagieren ----
+let debounceTimer = null;
+async function pruefeChat() {
+  const roh = leseChatNummer();
+  if (!roh) { entfernePanel(); return; }
+  const nummerNorm = normalisiereTelefon(roh);
+  if (nummerNorm === aktuelleNummer) return; // gleicher Chat, nichts zu tun
+  aktuelleNummer = nummerNorm;
+
+  try {
+    const leads = await holeLeads();
+    // Chat könnte inzwischen gewechselt haben
+    if (aktuelleNummer !== nummerNorm) return;
+    const lead = findeLead(leads, nummerNorm);
+    if (lead) renderLead(lead);
+    else renderKeinLead(nummerNorm);
+  } catch (e) {
+    renderPanel(`<div class="pc-leer">Dashboard nicht erreichbar</div>`, 'Lead-Dashboard');
+  }
+}
+
+const observer = new MutationObserver(() => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(pruefeChat, 400);
+});
+observer.observe(document.body, { childList: true, subtree: true });
+setTimeout(pruefeChat, 1500);

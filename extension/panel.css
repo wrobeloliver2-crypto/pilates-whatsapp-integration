@@ -1,0 +1,134 @@
+/* Pilates Company – Lead-Sidebar für WhatsApp Web */
+
+#pc-lead-panel {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 300px;
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 9999;
+  background: #faf7f4;
+  border: 1px solid #e5d9d3;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(44, 40, 37, 0.14);
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  font-size: 12.5px;
+  color: #2c2825;
+}
+
+#pc-lead-panel .pc-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #d9a49a;
+  border-radius: 11px 11px 0 0;
+  position: sticky;
+  top: 0;
+}
+
+#pc-lead-panel .pc-titel {
+  font-weight: 700;
+  font-size: 14px;
+  color: #2c2825;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pc-lead-panel .pc-toggle {
+  border: none;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+#pc-lead-panel .pc-inhalt {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#pc-lead-panel .pc-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+#pc-lead-panel .pc-quelle { background: #f5ede9; color: #b0796e; }
+#pc-lead-panel .pc-status { background: #ece7e2; color: #746e67; }
+#pc-lead-panel .pc-sofort { background: #ffebee; color: #c62828; }
+#pc-lead-panel .pc-wa     { background: #e9f4ed; color: #1f7a5c; }
+
+#pc-lead-panel .pc-zeile {
+  display: flex;
+  gap: 8px;
+  line-height: 1.4;
+}
+#pc-lead-panel .pc-label {
+  color: #746e67;
+  min-width: 88px;
+  flex-shrink: 0;
+}
+#pc-lead-panel .pc-wert {
+  font-weight: 500;
+  word-break: break-word;
+}
+
+#pc-lead-panel .pc-nachricht {
+  font-style: italic;
+  color: #746e67;
+  background: #f5ede9;
+  border-radius: 8px;
+  padding: 7px 9px;
+  line-height: 1.45;
+}
+
+#pc-lead-panel .pc-notizen {
+  color: #2c2825;
+  background: #f2f0ec;
+  border-radius: 8px;
+  padding: 7px 9px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+#pc-lead-panel .pc-leer {
+  color: #746e67;
+  text-align: center;
+  padding: 10px 0;
+  line-height: 1.6;
+}
+#pc-lead-panel .pc-nummer {
+  font-weight: 600;
+  color: #2c2825;
+}
+
+#pc-lead-panel .pc-link {
+  display: block;
+  text-align: center;
+  margin-top: 4px;
+  padding: 8px 0;
+  border-radius: 100px;
+  background: #d9a49a;
+  color: #2c2825;
+  font-weight: 600;
+  text-decoration: none;
+}
+#pc-lead-panel .pc-link:hover {
+  background: #b0796e;
+  color: #fff;
+}
