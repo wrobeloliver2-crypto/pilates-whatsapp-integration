@@ -17,22 +17,57 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 // "false_…" (vom Kontakt); der Container mit data-pre-plain-text trägt
 // "[HH:mm, TT.MM.JJJJ] Name: " — daraus lesen wir den Zeitstempel.
 // Nur Textnachrichten; Bilder/Sprachnachrichten ohne Text werden übersprungen.
-// HINWEIS: DOM-abhängig — wenn WhatsApp die Struktur ändert, hier nachziehen.
+// HINWEIS: DOM-abhängig — deshalb MEHRSTUFIGE Fallbacks (WhatsApp ändert
+// gelegentlich Klassen/Attribute; Stand 07/2026 fand `selectable-text`
+// keine Treffer mehr, obwohl die data-id-Zeilen weiterhin existieren):
+//   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
+//   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
+// Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
+function textAusZeile(row) {
+  // Stufe 1: klassischer Text-Span
+  let el = row.querySelector('span.selectable-text, div.selectable-text');
+  if (el && (el.innerText || '').trim()) return { text: el.innerText.trim(), stufe: 'selectable-text' };
+  // Stufe 2: copyable-text-Container (trägt data-pre-plain-text); dessen
+  // innerText enthält den reinen Nachrichtentext (Zeitstempel steckt im Attribut)
+  el = row.querySelector('[data-pre-plain-text]');
+  if (el && (el.innerText || '').trim()) return { text: el.innerText.trim(), stufe: 'pre-plain-text' };
+  // Stufe 3 (Notnagel): kompletter Zeilentext, Uhrzeit-Suffix ("10:42" o. Ä.)
+  // am Ende entfernen. Kann Metadaten enthalten — für den KI-Kontext akzeptabel.
+  const roh = (row.innerText || '').trim();
+  const bereinigt = roh.replace(/\n?\d{1,2}:\d{2}(\s?(AM|PM))?\s*$/i, '').trim();
+  if (bereinigt) return { text: bereinigt, stufe: 'zeilentext' };
+  return { text: '', stufe: 'leer' };
+}
+
 function leseVerlauf(maxN = 20) {
   const main = document.querySelector('#main');
-  if (!main) return [];
-  const rows = main.querySelectorAll('[data-id^="true_"], [data-id^="false_"]');
+  if (!main) {
+    console.debug('[PC-Sidebar] Verlauf: #main nicht gefunden');
+    return [];
+  }
+  // Zeilen-Erkennung Stufe 1: data-id-Prefix (liefert auch die Richtung)
+  let rows = Array.from(main.querySelectorAll('[data-id^="true_"], [data-id^="false_"]'))
+    .filter(r => (r.getAttribute('data-id') || '').includes('@c.us'));
+  let zeilenQuelle = 'data-id';
+  // Stufe 2: klassische Richtungs-Klassen (falls data-id-Struktur wegfällt)
+  if (!rows.length) {
+    rows = Array.from(main.querySelectorAll('div.message-in, div.message-out'));
+    zeilenQuelle = 'message-klassen';
+  }
   const msgs = [];
+  const stufenZaehler = {};
   rows.forEach(row => {
     const id = row.getAttribute('data-id') || '';
-    if (!id.includes('@c.us')) return; // Gruppen/Status ignorieren
-    const von = id.startsWith('true_') ? 'Studio' : 'Kunde';
+    const von = id
+      ? (id.startsWith('true_') ? 'Studio' : 'Kunde')
+      : (row.classList.contains('message-out') ? 'Studio' : 'Kunde');
     const pre = row.querySelector('[data-pre-plain-text]');
     const zeit = pre ? ((pre.getAttribute('data-pre-plain-text') || '').match(/\[(.*?)\]/) || [, ''])[1] : '';
-    const textEl = row.querySelector('span.selectable-text, div.selectable-text');
-    const text = textEl ? (textEl.innerText || '').trim() : '';
+    const { text, stufe } = textAusZeile(row);
+    stufenZaehler[stufe] = (stufenZaehler[stufe] || 0) + 1;
     if (text) msgs.push({ von, zeit, text: text.slice(0, 600) });
   });
+  console.debug(`[PC-Sidebar] Verlauf: ${rows.length} Zeilen (${zeilenQuelle}), ${msgs.length} Texte, Stufen:`, stufenZaehler);
   return msgs.slice(-maxN);
 }
 
@@ -162,6 +197,13 @@ function zeile(label, wert, klasse = '') {
 function renderLead(lead) {
   const wa = alterText(lead.waGesendetAm);
   const wv = lead.wiedervorlage ? lead.wiedervorlage.slice(0, 16).replace('T', ' ') : '';
+  // Interner De-Dup-Zähler "[Buchungen: N]" aus den Notizen: für die Anzeige
+  // herauslösen — nur ab 2 Buchungen als eigene Zeile relevant (Wiederholtäter),
+  // bei 1 reine Technik ohne Informationswert.
+  const notizenRoh = lead.notizen || '';
+  const buchungenMatch = notizenRoh.match(/\[Buchungen:\s*(\d+)\]/);
+  const buchungen = buchungenMatch ? parseInt(buchungenMatch[1], 10) : 0;
+  const notizenAnzeige = notizenRoh.replace(/\s*\[Buchungen:\s*\d+\]\s*/g, ' ').trim();
   const html = `
     ${lead.quelle ? `<span class="pc-badge pc-quelle">${esc(lead.quelle)}</span>` : ''}
     ${lead.status ? `<span class="pc-badge pc-status">${esc(lead.status)}</span>` : ''}
@@ -170,11 +212,12 @@ function renderLead(lead) {
     ${zeile('Bearbeiter', lead.bearbeiter !== 'Unzugewiesen' ? lead.bearbeiter : '')}
     ${zeile('Interesse', lead.interesse)}
     ${zeile('Wunschtag', lead.wunschtag)}
+    ${buchungen >= 2 ? zeile('Buchungen', `${buchungen}× (Mehrfach-Bucher)`) : ''}
     ${zeile('Wiedervorlage', wv && lead.wiedervorlageGrund ? `${wv} — ${lead.wiedervorlageGrund}` : wv)}
     ${zeile('E-Mail', lead.email)}
     ${zeile('Eingang', lead.eingangsdatum)}
     ${lead.nachricht ? `<div class="pc-nachricht">„${esc(lead.nachricht)}"</div>` : ''}
-    ${lead.notizen ? `<div class="pc-notizen">${esc(lead.notizen)}</div>` : ''}
+    ${notizenAnzeige ? `<div class="pc-notizen">${esc(notizenAnzeige)}</div>` : ''}
     <button class="pc-verlauf-btn" type="button">⤴ Verlauf an KI senden</button>
     <div class="pc-verlauf-status"></div>
     <a class="pc-link" href="${DASHBOARD_URL}" target="_blank" rel="noopener">Im Dashboard öffnen ↗</a>
