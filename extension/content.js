@@ -23,7 +23,7 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 //   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
 //   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
 // Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
-const SIDEBAR_VERSION = '1.1.3';
+const SIDEBAR_VERSION = '1.1.4';
 
 // Letzte Verlaufs-Diagnose — wird bei leerem Ergebnis direkt im Panel angezeigt,
 // damit die Fehlersuche ohne Entwicklerkonsole möglich ist.
@@ -246,7 +246,7 @@ function renderLead(lead) {
     ${notizenAnzeige ? `<div class="pc-notizen">${esc(notizenAnzeige)}</div>` : ''}
     <button class="pc-verlauf-btn" type="button">⤴ Verlauf an KI senden</button>
     <div class="pc-verlauf-status"></div>
-    <a class="pc-link" href="${DASHBOARD_URL}" target="_blank" rel="noopener">Im Dashboard öffnen ↗</a>
+    <a class="pc-link" href="${DASHBOARD_URL}${lead.id ? `?lead=${encodeURIComponent(lead.id)}` : ''}" target="_blank" rel="noopener">Im Dashboard öffnen ↗</a>
   `;
   renderPanel(html, lead.name || '(kein Name)');
   const el = document.getElementById('pc-lead-panel');
