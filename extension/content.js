@@ -23,7 +23,7 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 //   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
 //   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
 // Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
-const SIDEBAR_VERSION = '1.1.4';
+const SIDEBAR_VERSION = '1.2.0';
 
 // Letzte Verlaufs-Diagnose — wird bei leerem Ergebnis direkt im Panel angezeigt,
 // damit die Fehlersuche ohne Entwicklerkonsole möglich ist.

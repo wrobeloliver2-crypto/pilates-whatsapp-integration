@@ -1,8 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Pilates Company – Lead-Sidebar für WhatsApp",
-  "description": "Zeigt zur Telefonnummer des aktiven WhatsApp-Chats die passende Karte aus dem Lead-Dashboard.",
-  "version": "1.1.4",
+  "description": "Zeigt zur Telefonnummer des aktiven WhatsApp-Chats die passende Karte aus dem Lead-Dashboard und hält immer nur einen WhatsApp-Web-Tab offen.",
+  "version": "1.2.0",
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
@@ -11,5 +14,5 @@
       "run_at": "document_idle"
     }
   ],
-  "host_permissions": ["https://pilatesleaddashboard.netlify.app/*"]
+  "host_permissions": ["https://pilatesleaddashboard.netlify.app/*", "https://web.whatsapp.com/*"]
 }
