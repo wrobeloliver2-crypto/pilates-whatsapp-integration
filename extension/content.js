@@ -23,7 +23,7 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 //   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
 //   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
 // Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
-const SIDEBAR_VERSION = '1.2.0';
+const SIDEBAR_VERSION = '1.2.1';
 
 // Letzte Verlaufs-Diagnose — wird bei leerem Ergebnis direkt im Panel angezeigt,
 // damit die Fehlersuche ohne Entwicklerkonsole möglich ist.
@@ -220,6 +220,16 @@ function zeile(label, wert, klasse = '') {
   return `<div class="pc-zeile ${klasse}"><span class="pc-label">${esc(label)}</span><span class="pc-wert">${esc(wert)}</span></div>`;
 }
 
+// "Im Dashboard öffnen" / "Dashboard öffnen"-Links (unten): bewusst OHNE
+// rel="noopener"/"noreferrer" und mit festem target statt "_blank" (Oliver-
+// Feedback 07/2026: "jetzt passiert es andersrum" — von WhatsApp zurück zum
+// Dashboard öffnete jedes Mal ein neues Fenster, am Ende viele "Pila…"-Tabs).
+// Ursache: target="_blank" + rel="noopener" zwingt den Browser, JEDEN Klick
+// in eine komplett neue, unverbundene Browsing-Context-Gruppe zu öffnen —
+// ein benanntes Ziel kann darin nie wiedergefunden werden. Unser Dashboard
+// (anders als web.whatsapp.com, siehe WhatsAppBuilder.jsx) schickt keinen
+// Cross-Origin-Opener-Policy-Header, das benannte Ziel funktioniert hier
+// also normal: derselbe Tab wird bei jedem weiteren Klick wiederverwendet.
 function renderLead(lead) {
   const wa = alterText(lead.waGesendetAm);
   const wv = lead.wiedervorlage ? lead.wiedervorlage.slice(0, 16).replace('T', ' ') : '';
@@ -246,7 +256,7 @@ function renderLead(lead) {
     ${notizenAnzeige ? `<div class="pc-notizen">${esc(notizenAnzeige)}</div>` : ''}
     <button class="pc-verlauf-btn" type="button">⤴ Verlauf an KI senden</button>
     <div class="pc-verlauf-status"></div>
-    <a class="pc-link" href="${DASHBOARD_URL}${lead.id ? `?lead=${encodeURIComponent(lead.id)}` : ''}" target="_blank" rel="noopener">Im Dashboard öffnen ↗</a>
+    <a class="pc-link" href="${DASHBOARD_URL}${lead.id ? `?lead=${encodeURIComponent(lead.id)}` : ''}" target="pc_dashboard_tab">Im Dashboard öffnen ↗</a>
   `;
   renderPanel(html, lead.name || '(kein Name)');
   const el = document.getElementById('pc-lead-panel');
@@ -258,7 +268,7 @@ function renderLead(lead) {
 function renderKeinLead(nummerNorm) {
   renderPanel(
     `<div class="pc-leer">Kein Lead zu dieser Nummer<br><span class="pc-nummer">0${esc(nummerNorm)}</span></div>
-     <a class="pc-link" href="${DASHBOARD_URL}" target="_blank" rel="noopener">Dashboard öffnen ↗</a>`,
+     <a class="pc-link" href="${DASHBOARD_URL}" target="pc_dashboard_tab">Dashboard öffnen ↗</a>`,
     'Lead-Dashboard'
   );
 }
