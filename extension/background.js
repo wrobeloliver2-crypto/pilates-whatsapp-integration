@@ -54,3 +54,44 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     });
   });
 });
+
+// "Im Dashboard öffnen" (v1.2.2): content.js schickt hierher statt selbst
+// window.open/target zu nutzen.
+//
+// v1.2.1 hatte noch auf <a target="pc_dashboard_tab"> gesetzt — das
+// funktioniert NUR, wenn WIR den Tab beim ersten Klick selbst benannt haben.
+// Olivers echter Ablauf (Screenshots 07/2026): er hat morgens schon einen
+// Dashboard-Tab von Hand offen (URL eingetippt) — der trägt nie unseren
+// Namen, der Browser kann ihn beim ersten "Im Dashboard öffnen"-Klick aus
+// WhatsApp also nicht finden und öffnet zusätzlich einen neuen. Deshalb hier
+// derselbe Ansatz wie beim WhatsApp-Tab-Merge oben: über chrome.tabs.query
+// nach der TATSÄCHLICHEN URL suchen (findet auch von Hand geöffnete Tabs),
+// den ältesten als kanonisch behandeln, umlenken + fokussieren, Duplikate
+// schließen. Kein "_blank"/target-Trick mehr nötig.
+const DASHBOARD_ORIGIN = 'https://pilatesleaddashboard.netlify.app';
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (!msg || msg.type !== 'openDashboard' || !msg.url) return;
+
+  chrome.tabs.query({ url: `${DASHBOARD_ORIGIN}/*` }, (alle) => {
+    if (chrome.runtime.lastError) return;
+
+    if (!alle || alle.length === 0) {
+      chrome.tabs.create({ url: msg.url });
+      return;
+    }
+
+    const sortiert = [...alle].sort((a, b) => a.id - b.id);
+    const kanonisch = sortiert[0];
+    const duplikate = sortiert.slice(1);
+
+    chrome.tabs.update(kanonisch.id, { url: msg.url, active: true });
+    chrome.windows.update(kanonisch.windowId, { focused: true });
+
+    // Etwaige Dashboard-Duplikate (z.B. aus der Zeit vor diesem Fix) gleich
+    // mit aufräumen, statt sie ewig herumliegen zu lassen.
+    duplikate.forEach(t => {
+      chrome.tabs.remove(t.id, () => { void chrome.runtime.lastError; });
+    });
+  });
+});

@@ -23,7 +23,7 @@ const CACHE_MS = 60 * 1000; // Leads höchstens einmal pro Minute neu laden
 //   Zeilen:  data-id-Prefix → Fallback CSS-Klassen message-in/message-out
 //   Text:    selectable-text → copyable-text-Container → Zeilentext (bereinigt)
 // Diagnose: console.debug '[PC-Sidebar] …' zeigt, welche Stufe gegriffen hat.
-const SIDEBAR_VERSION = '1.2.1';
+const SIDEBAR_VERSION = '1.2.2';
 
 // Letzte Verlaufs-Diagnose — wird bei leerem Ergebnis direkt im Panel angezeigt,
 // damit die Fehlersuche ohne Entwicklerkonsole möglich ist.
@@ -220,16 +220,46 @@ function zeile(label, wert, klasse = '') {
   return `<div class="pc-zeile ${klasse}"><span class="pc-label">${esc(label)}</span><span class="pc-wert">${esc(wert)}</span></div>`;
 }
 
-// "Im Dashboard öffnen" / "Dashboard öffnen"-Links (unten): bewusst OHNE
-// rel="noopener"/"noreferrer" und mit festem target statt "_blank" (Oliver-
-// Feedback 07/2026: "jetzt passiert es andersrum" — von WhatsApp zurück zum
-// Dashboard öffnete jedes Mal ein neues Fenster, am Ende viele "Pila…"-Tabs).
-// Ursache: target="_blank" + rel="noopener" zwingt den Browser, JEDEN Klick
-// in eine komplett neue, unverbundene Browsing-Context-Gruppe zu öffnen —
-// ein benanntes Ziel kann darin nie wiedergefunden werden. Unser Dashboard
-// (anders als web.whatsapp.com, siehe WhatsAppBuilder.jsx) schickt keinen
-// Cross-Origin-Opener-Policy-Header, das benannte Ziel funktioniert hier
-// also normal: derselbe Tab wird bei jedem weiteren Klick wiederverwendet.
+// "Im Dashboard öffnen" / "Dashboard öffnen"-Links (unten):
+//
+// v1.2.1 hatte hier auf target="pc_dashboard_tab" (statt "_blank" + rel=
+// "noopener") umgestellt — das stimmt zwar isoliert (kein COOP-Problem beim
+// eigenen Dashboard wie bei web.whatsapp.com), löst Olivers Fall aber NICHT:
+// er hat morgens schon einen Dashboard-Tab offen, den er von Hand geöffnet
+// hat (URL eingetippt/Lesezeichen) — der trägt NIE den Namen
+// "pc_dashboard_tab", weil der nur vergeben wird, wenn WIR den Tab per
+// target-Klick erzeugt haben. Der Browser findet also beim ersten Klick aus
+// WhatsApp heraus keinen passenden benannten Tab und öffnet einen weiteren
+// neuen — jedes Mal, denn Olivers eigentlicher Dashboard-Tab bleibt für den
+// Namens-Mechanismus für immer unsichtbar (bestätigt per Screenshot-Ablauf
+// 07/2026: Dashboard-Tab von Hand offen → WhatsApp-Tab geöffnet → "Im
+// Dashboard öffnen" → zusätzlicher, komplett neuer Dashboard-Tab).
+//
+// v1.2.2: kein Namens-Trick mehr. Der Klick wird abgefangen und per
+// chrome.runtime.sendMessage an den Background-Service-Worker gemeldet, der
+// über die privilegierte chrome.tabs-API JEDEN offenen Tab mit passender URL
+// findet — unabhängig davon, wie/wann er geöffnet wurde — und darauf
+// umlenkt, statt einen neuen zu öffnen (gleiches Prinzip wie der WhatsApp-
+// Tab-Merge in background.js, nur für die Dashboard-Seite).
+function oeffneDashboard(url) {
+  try {
+    chrome.runtime.sendMessage({ type: 'openDashboard', url });
+  } catch (e) {
+    // Falls der Extension-Kontext gerade nicht erreichbar ist (z.B. direkt
+    // nach einem Extension-Reload) lieber ein neuer Tab als gar keiner.
+    window.open(url, '_blank');
+  }
+}
+
+function verdrahteDashboardLink(el) {
+  const link = el.querySelector('.pc-link');
+  if (!link) return;
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    oeffneDashboard(link.href);
+  });
+}
+
 function renderLead(lead) {
   const wa = alterText(lead.waGesendetAm);
   const wv = lead.wiedervorlage ? lead.wiedervorlage.slice(0, 16).replace('T', ' ') : '';
@@ -256,21 +286,23 @@ function renderLead(lead) {
     ${notizenAnzeige ? `<div class="pc-notizen">${esc(notizenAnzeige)}</div>` : ''}
     <button class="pc-verlauf-btn" type="button">⤴ Verlauf an KI senden</button>
     <div class="pc-verlauf-status"></div>
-    <a class="pc-link" href="${DASHBOARD_URL}${lead.id ? `?lead=${encodeURIComponent(lead.id)}` : ''}" target="pc_dashboard_tab">Im Dashboard öffnen ↗</a>
+    <a class="pc-link" href="${DASHBOARD_URL}${lead.id ? `?lead=${encodeURIComponent(lead.id)}` : ''}">Im Dashboard öffnen ↗</a>
   `;
   renderPanel(html, lead.name || '(kein Name)');
   const el = document.getElementById('pc-lead-panel');
   const btn = el.querySelector('.pc-verlauf-btn');
   const statusEl = el.querySelector('.pc-verlauf-status');
   if (btn) btn.addEventListener('click', () => sendeVerlauf(aktuelleNummer, lead.name || '', statusEl));
+  verdrahteDashboardLink(el);
 }
 
 function renderKeinLead(nummerNorm) {
   renderPanel(
     `<div class="pc-leer">Kein Lead zu dieser Nummer<br><span class="pc-nummer">0${esc(nummerNorm)}</span></div>
-     <a class="pc-link" href="${DASHBOARD_URL}" target="pc_dashboard_tab">Dashboard öffnen ↗</a>`,
+     <a class="pc-link" href="${DASHBOARD_URL}">Dashboard öffnen ↗</a>`,
     'Lead-Dashboard'
   );
+  verdrahteDashboardLink(document.getElementById('pc-lead-panel'));
 }
 
 function entfernePanel() {
