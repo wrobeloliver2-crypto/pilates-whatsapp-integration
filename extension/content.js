@@ -97,25 +97,32 @@ function leseVerlauf(maxN = 20) {
   return msgs.slice(-maxN);
 }
 
-async function sendeVerlauf(nummerNorm, chatName, statusEl) {
+// Reine Übertragung ohne UI-Status — von sendeVerlauf() (manueller Button,
+// EIN Chat) UND vom Bulk-Sync (background.js, viele Chats hintereinander)
+// gemeinsam genutzt.
+async function uebertrageVerlauf(nummerNorm, chatName) {
   const nachrichten = leseVerlauf();
   if (!nachrichten.length) {
-    statusEl.textContent = `Keine Texte gefunden — v${SIDEBAR_VERSION}: ${letzteVerlaufDiagnose}`;
-    return;
+    return { ok: false, reason: `Keine Texte gefunden (v${SIDEBAR_VERSION}: ${letzteVerlaufDiagnose})` };
   }
-  statusEl.textContent = '⏳ sende …';
   try {
     const res = await fetch(TRANSCRIPT_API, {
       method: 'POST',
       body: JSON.stringify({ telefon: nummerNorm, chatName, nachrichten }),
     });
     const data = await res.json();
-    statusEl.textContent = data.ok
-      ? `✓ ${data.anzahl} Nachrichten übermittelt — KI-Vorschlag nutzt sie jetzt`
-      : `⚠ ${data.reason || 'Fehler'}`;
+    return data.ok ? { ok: true, anzahl: data.anzahl } : { ok: false, reason: data.reason || 'Fehler' };
   } catch {
-    statusEl.textContent = '⚠ Dashboard nicht erreichbar';
+    return { ok: false, reason: 'Dashboard nicht erreichbar' };
   }
+}
+
+async function sendeVerlauf(nummerNorm, chatName, statusEl) {
+  statusEl.textContent = '⏳ sende …';
+  const ergebnis = await uebertrageVerlauf(nummerNorm, chatName);
+  statusEl.textContent = ergebnis.ok
+    ? `✓ ${ergebnis.anzahl} Nachrichten übermittelt — KI-Vorschlag nutzt sie jetzt`
+    : `⚠ ${ergebnis.reason}`;
 }
 
 let leadsCache = { at: 0, leads: [] };
@@ -338,3 +345,71 @@ const observer = new MutationObserver(() => {
 });
 observer.observe(document.body, { childList: true, subtree: true });
 setTimeout(pruefeChat, 1500);
+
+// ============================================================================
+// Bulk-Sync (NEU, v1.3.0): Gegenstück zu starteBulkSync() in background.js.
+// Der eigentliche Schleifen-/Navigations-Zustand lebt bewusst NICHT hier
+// (jeder Kontaktwechsel lädt diese Seite komplett neu, siehe Kommentar in
+// background.js) — dieses Script beantwortet pro Ladevorgang nur EINE Frage:
+// "Stimmt der gerade offene Chat mit der erwarteten Nummer überein, und wenn
+// ja, wie lautet der Verlauf?"
+
+function bulkBannerElement() {
+  let el = document.getElementById('pc-bulk-banner');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'pc-bulk-banner';
+  document.body.appendChild(el);
+  return el;
+}
+
+function zeigeBulkBanner(text) {
+  const el = bulkBannerElement();
+  el.textContent = text;
+  el.style.display = '';
+}
+
+function entferneBulkBanner(verzoegertMs = 4000) {
+  const el = document.getElementById('pc-bulk-banner');
+  if (!el) return;
+  setTimeout(() => { el.remove(); }, verzoegertMs);
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || !msg.type) return;
+
+  if (msg.type === 'bulkSyncProgress') {
+    zeigeBulkBanner(`🔄 Lead-Sync läuft: ${msg.done + 1}/${msg.total}${msg.name ? ` – ${msg.name}` : ''}`);
+    return;
+  }
+
+  if (msg.type === 'bulkSyncDone') {
+    const teil = msg.fehler
+      ? `⚠ abgebrochen: ${msg.fehler}`
+      : `✓ fertig — ${msg.erfolgreich}/${msg.total} übernommen${msg.fehlgeschlagen ? `, ${msg.fehlgeschlagen} ohne Verlauf/Fehler` : ''}${msg.uebersprungenLimit ? `, ${msg.uebersprungenLimit} wegen Obergrenze übersprungen` : ''}`;
+    zeigeBulkBanner(`🔄 Lead-Sync ${teil}`);
+    entferneBulkBanner();
+    return;
+  }
+
+  if (msg.type === 'scrapeAndSend') {
+    (async () => {
+      // Nach einer Navigation kann WhatsApp noch nachladen — kurz pollen,
+      // statt beim ersten (evtl. noch alten) DOM-Stand aufzugeben.
+      let versucheUebrig = 5;
+      let aktuelleNummer = leseChatNummer();
+      while (versucheUebrig > 0 && normalisiereTelefon(aktuelleNummer || '') !== msg.erwarteteNummer) {
+        await new Promise(r => setTimeout(r, 800));
+        aktuelleNummer = leseChatNummer();
+        versucheUebrig--;
+      }
+      if (normalisiereTelefon(aktuelleNummer || '') !== msg.erwarteteNummer) {
+        sendResponse({ ok: false, reason: `Chat zeigt Nummer ${aktuelleNummer || '(keine)'}, erwartet war ${msg.erwarteteNummer} — evtl. nicht in WhatsApp gespeichert/kein Chat vorhanden` });
+        return;
+      }
+      const ergebnis = await uebertrageVerlauf(msg.erwarteteNummer, msg.chatName || '');
+      sendResponse(ergebnis);
+    })();
+    return true; // Antwort kommt asynchron — Nachrichtenkanal offen halten
+  }
+});
